@@ -1,0 +1,36 @@
+{
+	"name": "@livectx/core",
+	"version": "0.0.0",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": ["dist"],
+	"scripts": {
+		"build": "tsup"
+	},
+	"peerDependencies": {
+		"zod": "^3.22.0 || ^4.0.0 || ^5.0.0"
+	},
+	"peerDependenciesMeta": {
+		"zod": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@livectx/sink-anthropic": "workspace:*",
+		"@livectx/sink-openai": "workspace:*",
+		"@livectx/sink-vercel-ai": "workspace:*",
+		"tsup": "^8.4.0",
+		"typescript": "^5.7.3",
+		"vitest": "^3.0.5",
+		"zod": "^3.25.0"
+	}
+}

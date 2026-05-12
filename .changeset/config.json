@@ -1,0 +1,24 @@
+{
+	"$schema": "https://unpkg.com/@changesets/config@3.0.3/schema.json",
+	"changelog": ["@changesets/changelog-github", { "repo": "livectx/livectx" }],
+	"commit": false,
+	"fixed": [],
+	"linked": [
+		[
+			"@livectx/core",
+			"@livectx/mcp",
+			"@livectx/sink-anthropic",
+			"@livectx/sink-openai",
+			"@livectx/sink-vercel-ai",
+			"@livectx/source-websocket",
+			"@livectx/source-sse",
+			"@livectx/store-redis",
+			"@livectx/react",
+			"@livectx/otel"
+		]
+	],
+	"access": "public",
+	"baseBranch": "main",
+	"updateInternalDependencies": "patch",
+	"ignore": []
+}

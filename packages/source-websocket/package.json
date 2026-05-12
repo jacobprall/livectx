@@ -1,0 +1,29 @@
+{
+	"name": "@livectx/source-websocket",
+	"version": "0.0.0",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": ["dist"],
+	"scripts": {
+		"build": "tsup"
+	},
+	"dependencies": {
+		"@livectx/core": "workspace:*"
+	},
+	"peerDependencies": {
+		"@livectx/core": ">=0.0.0"
+	},
+	"devDependencies": {
+		"tsup": "^8.4.0",
+		"typescript": "^5.7.3"
+	}
+}

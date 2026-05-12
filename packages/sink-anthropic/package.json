@@ -1,0 +1,29 @@
+{
+	"name": "@livectx/sink-anthropic",
+	"version": "0.0.0",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": ["dist"],
+	"scripts": {
+		"build": "tsup"
+	},
+	"peerDependencies": {
+		"@livectx/core": ">=0.0.0"
+	},
+	"devDependencies": {
+		"@livectx/core": "workspace:*",
+		"@types/node": "^22.10.7",
+		"tsup": "^8.4.0",
+		"typescript": "^5.7.3",
+		"vitest": "^3.0.5"
+	}
+}

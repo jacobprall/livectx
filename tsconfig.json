@@ -1,0 +1,39 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM"],
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"verbatimModuleSyntax": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"jsx": "react-jsx",
+		"paths": {
+			"@livectx/core": ["./packages/core/src/index.ts"],
+			"@livectx/mcp": ["./packages/mcp/src/index.ts"],
+			"@livectx/sink-anthropic": ["./packages/sink-anthropic/src/index.ts"],
+			"@livectx/sink-openai": ["./packages/sink-openai/src/index.ts"],
+			"@livectx/sink-vercel-ai": ["./packages/sink-vercel-ai/src/index.ts"],
+			"@livectx/source-websocket": ["./packages/source-websocket/src/index.ts"],
+			"@livectx/source-sse": ["./packages/source-sse/src/index.ts"],
+			"@livectx/store-redis": ["./packages/store-redis/src/index.ts"],
+			"@livectx/react": ["./packages/react/src/index.ts"],
+			"@livectx/otel": ["./packages/otel/src/index.ts"]
+		}
+	},
+	"include": [
+		"packages/*/src/**/*.ts",
+		"packages/*/src/**/*.tsx",
+		"packages/*/test/**/*.ts",
+		"packages/*/test/**/*.tsx",
+		"examples/*/src/**/*.ts",
+		"tsup.base.ts",
+		"vitest.config.ts",
+		"vitest.workspace.ts"
+	]
+}

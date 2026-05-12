@@ -5,11 +5,11 @@ import { z } from "zod"
 import type { LivectxMcpRuntime } from "./server-runtime.js"
 
 function looksLikeAnySchema(candidate: unknown): candidate is AnySchema {
+	if (candidate === null || typeof candidate !== "object") return false
+	const c = candidate as Record<string, unknown>
 	return (
-		candidate !== null &&
-		typeof candidate === "object" &&
-		"safeParse" in candidate &&
-		typeof (candidate as { safeParse: unknown }).safeParse === "function"
+		typeof c.safeParse === "function" &&
+		typeof c.safeParseAsync === "function"
 	)
 }
 

@@ -1,0 +1,27 @@
+{
+	"name": "@livectx/demo",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"demo:basics": "tsx src/01-basics.ts",
+		"demo:caching": "tsx src/02-caching.ts",
+		"demo:tools": "tsx src/03-tools.ts",
+		"demo:sinks": "tsx src/04-multi-sink.ts",
+		"demo:mcp": "tsx src/05-mcp-bridge.ts",
+		"demo:all": "tsx src/01-basics.ts && tsx src/02-caching.ts && tsx src/03-tools.ts && tsx src/04-multi-sink.ts && tsx src/05-mcp-bridge.ts"
+	},
+	"dependencies": {
+		"@livectx/core": "workspace:*",
+		"@livectx/mcp": "workspace:*",
+		"@livectx/sink-anthropic": "workspace:*",
+		"@livectx/sink-openai": "workspace:*",
+		"@livectx/sink-vercel-ai": "workspace:*",
+		"@modelcontextprotocol/sdk": "^1.12.1",
+		"zod": "^3.25.76"
+	},
+	"devDependencies": {
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.3"
+	}
+}

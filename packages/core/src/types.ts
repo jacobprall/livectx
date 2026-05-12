@@ -33,7 +33,12 @@ export interface Binding<T, Deps extends Record<string, AnyBinding> = {}> {
 	readonly __type: T // phantom for type inference
 }
 
-export type AnyBinding = Binding<unknown, any>
+// `any` (not `unknown`) is required here: BindingDef contains both covariant
+// positions (fetch return) and contravariant positions (render param), making
+// T invariant.  Binding<SomeType> is only assignable to Binding<any>, not
+// Binding<unknown>.
+// biome-ignore lint/suspicious/noExplicitAny: variance escape hatch
+export type AnyBinding = Binding<any, any>
 
 export type ResolvedDeps<Deps extends Record<string, AnyBinding>> = {
 	[K in keyof Deps]: Deps[K] extends Binding<infer V, any> ? V : never

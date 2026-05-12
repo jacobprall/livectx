@@ -30,6 +30,37 @@ importers:
         specifier: ^3.0.5
         version: 3.2.4(@types/node@22.19.19)(jsdom@26.1.0)(tsx@4.21.0)
 
+  demo:
+    dependencies:
+      '@livectx/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@livectx/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
+      '@livectx/sink-anthropic':
+        specifier: workspace:*
+        version: link:../packages/sink-anthropic
+      '@livectx/sink-openai':
+        specifier: workspace:*
+        version: link:../packages/sink-openai
+      '@livectx/sink-vercel-ai':
+        specifier: workspace:*
+        version: link:../packages/sink-vercel-ai
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.12.1
+        version: 1.29.0(zod@3.25.76)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   examples/customer-support:
     dependencies:
       '@livectx/core':

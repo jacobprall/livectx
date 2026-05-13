@@ -212,14 +212,37 @@ function renderBindingText(binding: AnyBinding, value: unknown): string {
 	}
 }
 
+function truncateDynamicBlocks(blocks: TextBlock[], tokenBudget: number): TextBlock[] {
+	if (tokenBudget <= 0) return []
+	let used = 0
+	const result: TextBlock[] = []
+	for (const block of blocks) {
+		const blockTokens = estimateTokens(block.text)
+		if (used + blockTokens <= tokenBudget) {
+			result.push(block)
+			used += blockTokens
+		} else {
+			const remaining = tokenBudget - used
+			if (remaining > 0) {
+				const charBudget = remaining * 4
+				result.push({ ...block, text: block.text.slice(0, charBudget) })
+			}
+			break
+		}
+	}
+	return result
+}
+
 export async function assembleTemplate<F extends SinkAdapter>(
 	rt: AssembleRuntimeContext,
 	ctx: ContextClient,
 	opts: AssembleOptions<F>,
+	truncateToTokens?: number,
 ): Promise<{
 	output: SinkOutput<F>
 	metrics: import("./types.js").AssembleMetrics
 	collectedToolBindings: readonly ToolBinding<unknown, unknown>[]
+	truncated: boolean
 }> {
 	const sink = opts.sink as F
 	const t0 = Date.now()
@@ -373,8 +396,16 @@ export async function assembleTemplate<F extends SinkAdapter>(
 	}
 
 	const staticTextConcat = staticBlocks.map((x) => x.text).join("")
-	const dynamicTextConcat = dynamicBlocks.map((x) => x.text).join("")
 	const staticTokens = estimateTokens(staticTextConcat)
+
+	let truncated = false
+	if (truncateToTokens !== undefined && staticTokens + estimateTokens(dynamicBlocks.map((x) => x.text).join("")) > truncateToTokens) {
+		const dynamicBudget = Math.max(0, truncateToTokens - staticTokens)
+		dynamicBlocks = truncateDynamicBlocks(dynamicBlocks, dynamicBudget)
+		truncated = true
+	}
+
+	const dynamicTextConcat = dynamicBlocks.map((x) => x.text).join("")
 	const dynamicTokens = estimateTokens(dynamicTextConcat)
 
 	const mergedMetricsBindings: Record<string, BindingMetric> = { ...bindingMetricsRaw }
@@ -407,6 +438,20 @@ export async function assembleTemplate<F extends SinkAdapter>(
 		segmentsBase,
 		timings,
 	)
+
+	if (truncated) {
+		const tw: import("./types.js").Warning = {
+			code: "budget-exceeded",
+			message: `Assembly truncated to ${truncateToTokens} tokens (dynamic content reduced)`,
+			severity: "warn",
+		}
+		lintWarnings.push(tw)
+		try {
+			rt.emitWarning?.(tw)
+		} catch {
+			//
+		}
+	}
 
 	for (const w of lintWarnings) {
 		try {
@@ -452,5 +497,5 @@ export async function assembleTemplate<F extends SinkAdapter>(
 	})
 
 	const output = sink.format(segments, resolvedTools) as SinkOutput<F>
-	return { output, metrics: segments.metrics, collectedToolBindings: collectedTools }
+	return { output, metrics: segments.metrics, collectedToolBindings: collectedTools, truncated }
 }

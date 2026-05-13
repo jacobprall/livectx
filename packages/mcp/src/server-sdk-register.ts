@@ -23,10 +23,7 @@ function registerToolBinding(
 			inputSchema: schema,
 		},
 		async (args: Record<string, unknown>) => {
-			const out = await tb.__tool.fetch(args as never, {
-				signal: new AbortController().signal,
-				client: runtime.client,
-			})
+			const out = await runtime.client.executeTool(tb.__tool.name, args)
 			let text: string
 			try {
 				text =

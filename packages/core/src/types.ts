@@ -244,6 +244,7 @@ export interface ContextClient {
 	isMounted(binding: AnyBinding): boolean
 	registerSink<F extends SinkAdapter>(name: string, sink: F): void
 	getUsage(): UsageSnapshot
+	registerTool(tool: ToolBinding<any, any>): void
 	executeTool(name: string, input: unknown): Promise<unknown>
 	dispose(): Promise<void>
 }

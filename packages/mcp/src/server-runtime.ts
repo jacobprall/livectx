@@ -38,7 +38,9 @@ export class LivectxMcpRuntime {
 		}
 
 		for (const tb of tools) {
-			this.toolsByName.set(tb.__tool.name, tb as ToolBinding<unknown, unknown>)
+			const typed = tb as ToolBinding<unknown, unknown>
+			this.toolsByName.set(typed.__tool.name, typed)
+			client.registerTool(typed)
 		}
 
 		this.bindInvalidations(resources)
@@ -140,14 +142,6 @@ export class LivectxMcpRuntime {
 	}
 
 	async executeTool(name: string, rawInput: unknown): Promise<unknown> {
-		const tb = this.toolsByName.get(name)
-		if (!tb) {
-			throw new Error(`Unknown tool: ${name}`)
-		}
-		const parsed = tb.__tool.input.parse(rawInput)
-		return tb.__tool.fetch(parsed as never, {
-			signal: new AbortController().signal,
-			client: this.client,
-		})
+		return this.client.executeTool(name, rawInput)
 	}
 }

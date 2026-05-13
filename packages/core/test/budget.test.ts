@@ -192,6 +192,68 @@ describe("Budget / Cost Control", () => {
 		await client.dispose()
 	})
 
+	it("truncates dynamic content when maxTokensPerAssembly exceeded and onExceeded is truncate", async () => {
+		const longText = "a".repeat(400)
+		const b = source({
+			key: ["budget", "long-truncate"],
+			placement: "dynamic",
+			staleTime: "1h",
+			fetch: async () => longText,
+		})
+
+		const onWarning = vi.fn()
+		type Out = { readonly segments: AssembledSegments; readonly tools: readonly ResolvedTool[] }
+		const client = createContextClient({
+			budget: { maxTokensPerAssembly: 50, onExceeded: "truncate" },
+			onWarning,
+		})
+
+		const out = await client.assemble({
+			template: prompt`${b}`,
+			sink: stubSink<Out>(),
+		})
+
+		expect(out.segments.metrics.prompt.totalTokens).toBeLessThanOrEqual(50)
+		expect(onWarning).toHaveBeenCalled()
+		expect(onWarning.mock.calls.some((c) => c[0]?.code === "budget-exceeded")).toBe(true)
+
+		const dynamicText = out.segments.dynamicBlocks.map((bl) => bl.text).join("")
+		expect(dynamicText.length).toBeLessThan(longText.length)
+
+		await client.dispose()
+	})
+
+	it("truncates respecting cumulative budget when onExceeded is truncate", async () => {
+		const body = "b".repeat(200)
+		const b = source({
+			key: ["budget", "cum-trunc"],
+			placement: "dynamic",
+			staleTime: "1h",
+			fetch: async () => body,
+		})
+
+		type Out = { readonly segments: AssembledSegments; readonly tools: readonly ResolvedTool[] }
+		const client = createContextClient({
+			budget: { maxCumulativeTokens: 80, onExceeded: "truncate" },
+		})
+
+		const first = await client.assemble({
+			template: prompt`${b}`,
+			sink: stubSink<Out>(),
+		})
+		const firstTokens = first.segments.metrics.prompt.totalTokens
+
+		const second = await client.assemble({
+			template: prompt`${b}`,
+			sink: stubSink<Out>(),
+		})
+		const secondTokens = second.segments.metrics.prompt.totalTokens
+
+		expect(firstTokens + secondTokens).toBeLessThanOrEqual(80)
+
+		await client.dispose()
+	})
+
 	it("throws BudgetExceededError for fetches when maxFetchesPerMinute exceeded", async () => {
 		const fetchSpy = vi.fn(async () => 1)
 

@@ -549,6 +549,17 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 				throw new Error("ContextClient disposed")
 			}
 
+			let truncateToTokens: number | undefined
+			if (budget?.onExceeded === "truncate") {
+				const limits: number[] = []
+				if (budget.maxTokensPerAssembly) limits.push(budget.maxTokensPerAssembly)
+				if (budget.maxCumulativeTokens) {
+					const remaining = budget.maxCumulativeTokens - accounting.cumulativeTokens
+					if (remaining > 0) limits.push(remaining)
+				}
+				if (limits.length) truncateToTokens = Math.min(...limits)
+			}
+
 			const { output, metrics, collectedToolBindings } = await assembleTemplate(
 				{
 					registerBinding: register,
@@ -567,6 +578,7 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 				},
 				clientRef,
 				assembleOpts,
+				truncateToTokens,
 			)
 
 			for (const t of collectedToolBindings) {
@@ -773,6 +785,10 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 						: "unlimited",
 				},
 			}
+		},
+
+		registerTool(tb) {
+			toolsByName.set(tb.__tool.name, tb as ToolBinding<unknown, unknown>)
 		},
 
 		async executeTool(nm, input) {

@@ -40,7 +40,7 @@ describe("@livectx/sink-openai", () => {
 		expect(out.messages.map((m) => m.role)).toEqual(["system", "user"])
 
 		expect(out.messages[0]?.role).toBe("system")
-		expect(out.messages[0]?.content).toBe("alpha\nbeta")
+		expect(out.messages[0]?.content).toBe("alphabeta")
 
 		expect(out.messages[1]?.role).toBe("user")
 		expect(out.messages[1]?.content).toBe("user-line")

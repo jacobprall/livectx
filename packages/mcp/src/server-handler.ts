@@ -17,6 +17,13 @@ import type { McpServerOpts } from "./server-types.js"
 
 export type McpSessionId = number
 
+function extractParam<K extends string>(params: unknown, key: K): unknown {
+	if (params !== null && typeof params === "object" && key in (params as Record<string, unknown>)) {
+		return (params as Record<string, unknown>)[key]
+	}
+	return undefined
+}
+
 /** Test-centric JSON-RPC surface for MCP resources/tools (no network transports). */
 export class McpServerHandler {
 	private readonly hub = new ResourceSubscriptionHub()
@@ -57,15 +64,15 @@ export class McpServerHandler {
 			case "resources/list":
 				return buildResourcesListResult(this.runtime)
 			case "resources/read":
-				return resourcesRead(this.runtime, (params as { uri?: unknown } | undefined)?.uri)
+				return resourcesRead(this.runtime, extractParam(params, "uri"))
 			case "resources/subscribe": {
-				const uri = (params as { uri?: unknown } | undefined)?.uri
+				const uri = extractParam(params, "uri")
 				const sid = this.requireSession(sessionContext, method)
 				resourcesSubscribe(uri, this.hub, sid)
 				return {}
 			}
 			case "resources/unsubscribe": {
-				const uri = (params as { uri?: unknown } | undefined)?.uri
+				const uri = extractParam(params, "uri")
 				const sid = this.requireSession(sessionContext, method)
 				resourcesUnsubscribe(uri, this.hub, sid)
 				return {}
@@ -84,7 +91,7 @@ export class McpServerHandler {
 	}
 
 	private handleInitialize(params: unknown) {
-		const requested = (params as { protocolVersion?: string } | undefined)?.protocolVersion
+		const requested = extractParam(params, "protocolVersion") as string | undefined
 		const protocolVersion =
 			requested && SUPPORTED_PROTOCOL_VERSIONS.includes(requested as never)
 				? requested

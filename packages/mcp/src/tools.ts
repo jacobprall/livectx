@@ -43,25 +43,29 @@ export async function mcpTools(server: McpClientHandle): Promise<ToolBinding<unk
 			? jsonSchemaToSchema(tool.inputSchema as Record<string, unknown>)
 			: fallbackInputSchema
 
-		const toolDef: ToolBindingDef<unknown, unknown> = {
+		// MCP tool names may contain characters (e.g. hyphens) that don't pass
+		// the core tool() factory regex, so we construct ToolBindings directly.
+		const toolDef: ToolBindingDef<unknown, unknown> = Object.freeze({
 			key: ["mcp", server.serverId, "tool", tool.name],
 			name: tool.name,
 			description: tool.description ?? "",
 			input,
-			fetch: async (inputValue, _ctx) =>
+			fetch: async (inputValue: unknown, _ctx: unknown) =>
 				normalizeCallToolResult(await server.callTool(tool.name, inputValue)),
-		}
+		})
 
-		const bindingDef: BindingDef<unknown, Record<string, never>> = {
+		const bindingDef: BindingDef<unknown, Record<string, never>> = Object.freeze({
 			key: toolDef.key,
-			fetch: async () => undefined,
+			fetch: async () => {
+				throw new Error("Tool bindings do not support direct prefetch")
+			},
 			placement: "tool",
-		}
+		})
 
-		return {
+		return Object.freeze({
 			__brand: "Binding",
 			__def: bindingDef,
 			__tool: toolDef,
-		} as ToolBinding<unknown, unknown>
+		}) as ToolBinding<unknown, unknown>
 	})
 }

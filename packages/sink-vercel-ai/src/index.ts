@@ -5,6 +5,7 @@ import type {
 	ResolvedTool,
 	SinkAdapter,
 } from "@livectx/core"
+import { segmentsToText } from "@livectx/core"
 
 export interface VercelAIToolDefinition {
 	description: string
@@ -27,8 +28,7 @@ export function vercelAISink(): SinkAdapter<VercelAISinkOutput> {
 	return {
 		name: "vercel-ai",
 		format(segments: AssembledSegments, tools: readonly ResolvedTool[]): VercelAISinkOutput {
-			const staticText = segments.staticBlocks.map((b) => b.text).join("\n")
-			const dynamicText = segments.dynamicBlocks.map((b) => b.text).join("\n")
+			const { staticText, dynamicText } = segmentsToText(segments)
 
 			const system = staticText.trim()
 

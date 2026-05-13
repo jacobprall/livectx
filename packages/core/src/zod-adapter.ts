@@ -1,5 +1,7 @@
 import type { JsonSchema, Schema } from "./types.js"
 
+const MAX_SCHEMA_UNWRAP_DEPTH = 48
+
 interface ZodDef {
 	typeName?: string
 	shape?: () => Record<string, ZodLike<unknown>>
@@ -28,7 +30,7 @@ function typeName(z: ZodLike<unknown>): string | undefined {
 
 function unwrapForSchema(z: ZodLike<unknown>): ZodLike<unknown> {
 	let cur: ZodLike<unknown> = z
-	for (let guard = 0; guard < 48; guard++) {
+	for (let guard = 0; guard < MAX_SCHEMA_UNWRAP_DEPTH; guard++) {
 		const tn = typeName(cur)
 		if (tn === "ZodEffects" && cur._def?.schema) {
 			cur = cur._def.schema
@@ -163,7 +165,7 @@ function shapeToJsonSchema(zodSchema: ZodLike<unknown>, visiting: Set<string>): 
 			let defVal: unknown | undefined
 
 			let cycleGuard = 0
-			while (cycleGuard++ < 48) {
+			while (cycleGuard++ < MAX_SCHEMA_UNWRAP_DEPTH) {
 				const ctn = typeName(leaf)
 
 				if (ctn === "ZodOptional" || ctn === "ZodNullable" || ctn === "ZodReadonly") {

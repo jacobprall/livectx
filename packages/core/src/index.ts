@@ -16,5 +16,11 @@ export type {
 	AssembleRuntimeContext,
 } from "./assemble.js"
 export { lintAssembly } from "./lint.js"
-export { CircularDependencyError, AssemblyError } from "./errors.js"
-export { rawSink } from "./sink-raw.js"
+export {
+	CircularDependencyError,
+	AssemblyError,
+	BudgetExceededError,
+	ToolDeniedError,
+} from "./errors.js"
+export { composeHooks } from "./compose-hooks.js"
+export { rawSink, segmentsToText } from "./sink-raw.js"

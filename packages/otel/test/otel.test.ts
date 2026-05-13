@@ -5,6 +5,7 @@ function createMockTracer() {
 	const spans: Array<{
 		name: string
 		attributes?: Record<string, string | number | boolean>
+		events: Array<{ name: string; attributes?: Record<string, string | number | boolean> }>
 	}> = []
 	return {
 		spans,
@@ -13,11 +14,13 @@ function createMockTracer() {
 				name: string,
 				options?: { attributes?: Record<string, string | number | boolean> },
 			) {
-				const rec = { name, ...options }
+				const rec: (typeof spans)[number] = { name, ...options, events: [] }
 				spans.push(rec)
 				return {
 					setAttribute: vi.fn(),
-					addEvent: vi.fn(),
+					addEvent: (evName: string, attrs?: Record<string, string | number | boolean>) => {
+						rec.events.push({ name: evName, attributes: attrs })
+					},
 					end: vi.fn(),
 				}
 			},
@@ -45,12 +48,15 @@ describe("otelTelemetry", () => {
 
 		const assemble = spans.find((s) => s.name === "livectx.assemble")
 		expect(assemble?.attributes).toMatchObject({
+			"livectx.duration_ms": 42,
+		})
+		const ev = assemble?.events.find((e) => e.name === "assemble.complete")
+		expect(ev?.attributes).toMatchObject({
 			"livectx.bindings.count": 1,
 			"livectx.tokens.static": 10,
 			"livectx.tokens.dynamic": 20,
 			"livectx.tokens.total": 30,
 			"livectx.cache_hit": true,
-			"livectx.duration_ms": 42,
 			"livectx.warnings.count": 0,
 		})
 	})

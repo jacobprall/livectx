@@ -5,6 +5,7 @@ import type {
 	ResolvedTool,
 	SinkAdapter,
 } from "@livectx/core"
+import { segmentsToText } from "@livectx/core"
 
 export interface OpenAISinkOutput {
 	messages: Array<{
@@ -28,12 +29,10 @@ export function openaiSink(): SinkAdapter<OpenAISinkOutput> {
 		format(segments: AssembledSegments, tools: readonly ResolvedTool[]): OpenAISinkOutput {
 			const messages: OpenAISinkOutput["messages"] = []
 
-			const staticText = segments.staticBlocks.map((b) => b.text).join("\n")
+			const { staticText, dynamicText } = segmentsToText(segments)
 			if (staticText.trim()) {
 				messages.push({ role: "system", content: staticText })
 			}
-
-			const dynamicText = segments.dynamicBlocks.map((b) => b.text).join("\n")
 			if (dynamicText.trim()) {
 				messages.push({ role: "user", content: dynamicText })
 			}

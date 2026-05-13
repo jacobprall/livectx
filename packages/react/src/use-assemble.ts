@@ -31,26 +31,26 @@ function templateSignature(
 	// biome-ignore lint/suspicious/noExplicitAny: signature string for heterogeneous tools
 	tools?: readonly ToolBinding<any, any>[],
 ): string {
-	const toolNames = tools?.map((t) => t.__tool.name).join("\0") ?? ""
-	const valuePart = template.values
-		.map((v) => {
+	const parts: unknown[] = [
+		template.strings,
+		template.values.map((v) => {
 			if (typeof v === "object" && v !== null) {
 				if ("__def" in v && (v as AnyBinding).__def?.key) {
-					return `b:${serializeKey((v as AnyBinding).__def.key)}`
+					return ["b", serializeKey((v as AnyBinding).__def.key)]
 				}
 				if ("__tool" in v) {
-					const tb = v as ToolBinding<unknown, unknown>
-					return `t:${tb.__tool.name}`
+					return ["t", (v as ToolBinding<unknown, unknown>).__tool.name]
 				}
 				if ("__marker" in v) {
 					const m = v as { __marker: string; ttl?: string }
-					return `m:${m.__marker}:${m.ttl ?? ""}`
+					return ["m", m.__marker, m.ttl]
 				}
 			}
-			return `p:${String(v)}`
-		})
-		.join("|")
-	return `${template.strings.join("\0")}@@${valuePart}@@${toolNames}`
+			return ["p", typeof v, String(v)]
+		}),
+		tools?.map((t) => t.__tool.name),
+	]
+	return JSON.stringify(parts)
 }
 
 export function useAssemble<F extends SinkAdapter>(opts: UseAssembleOpts<F>): UseAssembleResult<F> {

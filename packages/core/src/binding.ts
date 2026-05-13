@@ -12,14 +12,13 @@ function shallowFreezeBindingDef<T, Deps extends Record<string, AnyBinding>>(
 	def: BindingDef<T, Deps>,
 ): BindingDef<T, Deps> {
 	const keyCopy = Object.freeze([...def.key])
-	const frozen: BindingDef<T, Deps> = Object.freeze({
+	if (def.dependsOn) {
+		Object.freeze(def.dependsOn)
+	}
+	return Object.freeze({
 		...def,
 		key: keyCopy,
 	})
-	if (frozen.dependsOn) {
-		Object.freeze(frozen.dependsOn)
-	}
-	return frozen
 }
 
 export function source<T, Deps extends Record<string, AnyBinding> = {}>(

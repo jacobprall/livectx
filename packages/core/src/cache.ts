@@ -18,7 +18,6 @@ export function createMemoryStore(): StoreAdapter & {
 		__backingMap: map,
 
 		async get<T>(key: string): Promise<CacheEntry<T> | undefined> {
-			await pruneExpired()
 			const raw = map.get(key)
 			if (!raw || Date.now() > raw.expiresAt) {
 				if (raw) {
@@ -38,8 +37,14 @@ export function createMemoryStore(): StoreAdapter & {
 		},
 
 		async *keys(): AsyncIterable<string> {
-			await pruneExpired()
-			yield* map.keys()
+			const now = Date.now()
+			for (const [k, entry] of map) {
+				if (now > entry.expiresAt) {
+					map.delete(k)
+				} else {
+					yield k
+				}
+			}
 		},
 
 		async clear(): Promise<void> {

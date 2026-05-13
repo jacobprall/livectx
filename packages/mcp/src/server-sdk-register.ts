@@ -7,10 +7,7 @@ import type { LivectxMcpRuntime } from "./server-runtime.js"
 function looksLikeAnySchema(candidate: unknown): candidate is AnySchema {
 	if (candidate === null || typeof candidate !== "object") return false
 	const c = candidate as Record<string, unknown>
-	return (
-		typeof c.safeParse === "function" &&
-		typeof c.safeParseAsync === "function"
-	)
+	return typeof c.safeParse === "function" && typeof c.safeParseAsync === "function"
 }
 
 function registerToolBinding(

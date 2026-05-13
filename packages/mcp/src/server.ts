@@ -187,15 +187,6 @@ export function exposeAsMcpServer(client: ContextClient, opts: McpServerOpts): M
 							poolAttach(activeTransport, freshMcp, sdkPool)
 
 							await activeTransport.handleRequest(req as never, res as never, body)
-
-							res.once("close", () => {
-								const sid = activeTransport.sessionId
-								if (!sid) {
-									return
-								}
-								sessions.delete(sid)
-								void activeTransport.close().catch(() => {})
-							})
 							return
 						}
 
@@ -241,7 +232,27 @@ export function exposeAsMcpServer(client: ContextClient, opts: McpServerOpts): M
 						}
 
 						await lift.handleRequest(req as never, res as never)
+						return
 					}
+
+					if (req.method === "DELETE") {
+						const hdr = req.headers["mcp-session-id"]
+						const sid = hdr === undefined ? undefined : Array.isArray(hdr) ? hdr[0] : hdr
+						if (sid) {
+							const transport = sessions.get(sid)
+							if (transport) {
+								sessions.delete(sid)
+								void transport.close().catch(() => {})
+							}
+						}
+						res.statusCode = 200
+						res.end()
+						return
+					}
+
+					res.statusCode = 405
+					res.setHeader("Allow", "GET, POST, DELETE")
+					res.end()
 				} catch (err) {
 					if (!res.headersSent) {
 						res.statusCode = 500

@@ -4,11 +4,11 @@ import { bindingKeyToUri, uriToBindingKey } from "../src/uri.js"
 describe("binding URIs", () => {
 	it("bindingKeyToUri converts simple string keys", () => {
 		const uri = bindingKeyToUri(["project", "p_42"])
-		expect(uri).toBe("livectx://project/p_42")
+		expect(uri).toBe("livectx://%22project%22/%22p_42%22")
 	})
 
 	it("uriToBindingKey parses URIs back to atoms", () => {
-		expect(uriToBindingKey("livectx://project/p_42")).toEqual(["project", "p_42"])
+		expect(uriToBindingKey("livectx://%22project%22/%22p_42%22")).toEqual(["project", "p_42"])
 	})
 
 	it("throws on invalid URIs", () => {

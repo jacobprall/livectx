@@ -37,7 +37,7 @@ describe("@livectx/sink-vercel-ai", () => {
 		const out = sink.format(segmentsSample(), [demoTool])
 
 		expect(typeof out.system).toBe("string")
-		expect(out.system).toBe("system-text\nmore-static")
+		expect(out.system).toBe("system-textmore-static")
 
 		expect(out.messages).toEqual([{ role: "user", content: "user-chunk" }])
 

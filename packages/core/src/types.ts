@@ -37,7 +37,6 @@ export interface Binding<T, Deps extends Record<string, AnyBinding> = {}> {
 // positions (fetch return) and contravariant positions (render param), making
 // T invariant.  Binding<SomeType> is only assignable to Binding<any>, not
 // Binding<unknown>.
-// biome-ignore lint/suspicious/noExplicitAny: variance escape hatch
 export type AnyBinding = Binding<any, any>
 
 export type ResolvedDeps<Deps extends Record<string, AnyBinding>> = {
@@ -116,6 +115,8 @@ export interface ContextClientOptions {
 	defaultGcTime?: Duration
 	telemetry?: TelemetryAdapter
 	onWarning?: (warning: Warning) => void
+	permissions?: PermissionHook
+	budget?: Budget
 }
 
 // Assembly
@@ -166,6 +167,7 @@ export type WarningCode =
 	| "fetch-slow"
 	| "subscription-dropped"
 	| "schema-mismatch"
+	| "budget-exceeded"
 
 // Adapters
 export interface StoreAdapter {
@@ -210,6 +212,26 @@ export interface TelemetryAdapter {
 	recordWarning(warning: Warning): void
 }
 
+export interface Budget {
+	maxTokensPerAssembly?: number
+	maxCumulativeTokens?: number
+	maxAssembliesPerMinute?: number
+	maxFetchesPerMinute?: number
+	minStaleTime?: Duration
+	onExceeded?: "throw" | "warn" | "truncate"
+}
+
+export interface UsageSnapshot {
+	cumulativeTokens: number
+	assembliesTotal: number
+	assembliesThisWindow: number
+	fetchesThisWindow: number
+	budgetRemaining: {
+		tokens: number | "unlimited"
+		assemblies: number | "unlimited"
+	}
+}
+
 // ContextClient interface (will be implemented in Sprint 2)
 export interface ContextClient {
 	assemble<F extends SinkAdapter>(opts: AssembleOptions<F>): Promise<SinkOutput<F>>
@@ -221,6 +243,19 @@ export interface ContextClient {
 	mount(binding: AnyBinding): Unsubscribe
 	isMounted(binding: AnyBinding): boolean
 	registerSink<F extends SinkAdapter>(name: string, sink: F): void
+	getUsage(): UsageSnapshot
 	executeTool(name: string, input: unknown): Promise<unknown>
 	dispose(): Promise<void>
+}
+
+export interface ToolCallRequest {
+	name: string
+	input: unknown
+	description: string
+	bindingKey: BindingKey
+}
+
+export interface PermissionHook {
+	onToolCall?: (request: ToolCallRequest) => boolean | Promise<boolean>
+	onDeny?: "throw" | "return-error"
 }

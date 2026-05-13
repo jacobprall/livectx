@@ -1,6 +1,7 @@
 import { assembleTemplate } from "./assemble.js"
 import { createMemoryStore } from "./cache.js"
 import { parseDuration } from "./duration.js"
+import { BudgetExceededError, ToolDeniedError } from "./errors.js"
 import { matchKey, serializeKey } from "./key.js"
 import type {
 	AnyBinding,
@@ -37,13 +38,16 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 		return Promise.reject(err)
 	}
 	return new Promise<void>((resolve, reject) => {
-		const timer = globalThis.setTimeout(resolve, ms)
 		const onAbort = () => {
 			globalThis.clearTimeout(timer)
 			const err = new Error("Aborted")
 			err.name = "AbortError"
 			reject(err)
 		}
+		const timer = globalThis.setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort)
+			resolve()
+		}, ms)
 		signal?.addEventListener("abort", onAbort, { once: true })
 	})
 }
@@ -69,9 +73,11 @@ function tokenEstimate(value: unknown): number {
 	}
 }
 
+const NEVER_ABORTED = new AbortController().signal
+
 function combineSignals(primary?: AbortSignal, secondary?: AbortSignal): AbortSignal {
 	if (!primary) {
-		return secondary ?? new AbortController().signal
+		return secondary ?? NEVER_ABORTED
 	}
 	if (!secondary) {
 		return primary
@@ -83,6 +89,8 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 	const store = opts.store ?? createMemoryStore()
 	const telemetry = opts.telemetry
 	const userWarningHook = opts.onWarning
+	const permissions = opts.permissions
+	const budget = opts.budget
 
 	const syncSnapshot = new Map<string, CacheEntry<unknown>>()
 	const registryKeyBySer = new Map<string, BindingKey>()
@@ -94,6 +102,26 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 	const mounted = new Map<string, Unsubscribe>()
 	const registeredSinks = new Map<string, import("./types.js").SinkAdapter>()
 	const toolsByName = new Map<string, ToolBinding<unknown, unknown>>()
+
+	const accounting = {
+		cumulativeTokens: 0,
+		assembliesTotal: 0,
+		assembliesThisWindow: 0,
+		fetchesThisWindow: 0,
+		windowStart: Date.now(),
+	}
+
+	let windowTimer: ReturnType<typeof setInterval> | undefined
+	if (budget && (budget.maxAssembliesPerMinute || budget.maxFetchesPerMinute)) {
+		windowTimer = setInterval(() => {
+			accounting.assembliesThisWindow = 0
+			accounting.fetchesThisWindow = 0
+			accounting.windowStart = Date.now()
+		}, 60_000)
+		if (typeof windowTimer === "object" && "unref" in windowTimer) {
+			;(windowTimer as { unref: () => void }).unref()
+		}
+	}
 
 	let disposed = false
 	const masterAbort = new AbortController()
@@ -151,8 +179,18 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 				binding.__def.staleTime !== undefined
 					? binding.__def.staleTime
 					: (opts.defaultStaleTime ?? 0)
-			return parseDuration(dur as never)
-		} catch {
+			const bindingStale = parseDuration(dur as import("./types.js").Duration)
+			const budgetFloor = budget?.minStaleTime
+				? parseDuration(budget.minStaleTime as import("./types.js").Duration)
+				: 0
+			return Math.max(bindingStale, budgetFloor)
+		} catch (e) {
+			notifyWarning({
+				code: "schema-mismatch",
+				message: `Invalid staleTime for binding ${serializeKey(binding.__def.key)}: ${e instanceof Error ? e.message : String(e)}`,
+				bindingKey: binding.__def.key,
+				severity: "warn",
+			})
 			return 0
 		}
 	}
@@ -161,8 +199,14 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 		try {
 			const dur =
 				binding.__def.gcTime !== undefined ? binding.__def.gcTime : (opts.defaultGcTime ?? "5m")
-			return parseDuration(dur as never)
-		} catch {
+			return parseDuration(dur as import("./types.js").Duration)
+		} catch (e) {
+			notifyWarning({
+				code: "schema-mismatch",
+				message: `Invalid gcTime for binding ${serializeKey(binding.__def.key)}: ${e instanceof Error ? e.message : String(e)}`,
+				bindingKey: binding.__def.key,
+				severity: "warn",
+			})
 			return parseDuration("5m")
 		}
 	}
@@ -226,6 +270,31 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 		selfClient: ContextClient,
 		mode: AssemblyResolveInput["onBindingError"],
 	): Promise<{ value?: unknown; omitted?: boolean; latencyMs: number; retries: number }> {
+		if (budget?.maxFetchesPerMinute) {
+			if (accounting.fetchesThisWindow >= budget.maxFetchesPerMinute) {
+				const budgetAction = budget.onExceeded ?? "throw"
+				const w: import("./types.js").Warning = {
+					code: "budget-exceeded",
+					message: `Fetch rate limit exceeded: ${accounting.fetchesThisWindow + 1}/${budget.maxFetchesPerMinute} per minute`,
+					bindingKey: binding.__def.key,
+					severity: "error",
+				}
+				notifyWarning(w)
+				if (budgetAction === "throw") {
+					throw new BudgetExceededError(
+						"fetches",
+						budget.maxFetchesPerMinute,
+						accounting.fetchesThisWindow + 1,
+					)
+				}
+				const cached = syncSnapshot.get(serializeKey(binding.__def.key))
+				if (cached && cached.state !== "error") {
+					return { value: cached.value, latencyMs: 0, retries: 0 }
+				}
+			}
+			accounting.fetchesThisWindow++
+		}
+
 		const rp = binding.__def.retry
 		const maxAttempts = rp?.attempts ?? 1
 		const backoffMode = rp?.backoff ?? "linear"
@@ -404,36 +473,30 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 				})
 			}
 
-			if (!entry) {
+			async function fetchAndPersist(): Promise<void> {
 				const res = await fetchWithRetry(binding, opts.resolvedDeps, signal, selfClient, mode)
 				if (res.omitted) {
 					await writeErr(new Error("omitted"))
-				} else if (res.value !== undefined) {
-					await writeFresh(res.value)
 				} else {
-					await writeErr(new Error("missing resolved value"))
+					await writeFresh(res.value)
 				}
 				foreground = { ran: true, latencyMs: res.latencyMs, retries: res.retries }
+			}
+
+			if (!entry) {
+				await fetchAndPersist()
 				return
 			}
 
 			if (entry.state === "error") {
 				if (mode === "fallback-or-omit" && binding.__def.fallback !== undefined) {
-					await writeFresh(binding.__def.fallback as never)
+					await writeFresh(binding.__def.fallback)
 					return
 				}
 				if (mode === "fallback-or-omit") {
 					return
 				}
-				const res = await fetchWithRetry(binding, opts.resolvedDeps, signal, selfClient, mode)
-				if (res.omitted) {
-					await writeErr(new Error("omitted"))
-				} else if (res.value !== undefined) {
-					await writeFresh(res.value)
-				} else {
-					await writeErr(new Error("missing resolved value"))
-				}
-				foreground = { ran: true, latencyMs: res.latencyMs, retries: res.retries }
+				await fetchAndPersist()
 				return
 			}
 
@@ -446,15 +509,7 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 				return
 			}
 
-			const res = await fetchWithRetry(binding, opts.resolvedDeps, signal, selfClient, mode)
-			if (res.omitted) {
-				await writeErr(new Error("omitted"))
-			} else if (res.value !== undefined) {
-				await writeFresh(res.value)
-			} else {
-				await writeErr(new Error("missing resolved value"))
-			}
-			foreground = { ran: true, latencyMs: res.latencyMs, retries: res.retries }
+			await fetchAndPersist()
 		})().finally(() => {
 			inflight.delete(ser)
 		})
@@ -493,7 +548,6 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 			if (disposed) {
 				throw new Error("ContextClient disposed")
 			}
-			toolsByName.clear()
 
 			const { output, metrics, collectedToolBindings } = await assembleTemplate(
 				{
@@ -517,6 +571,63 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 
 			for (const t of collectedToolBindings) {
 				toolsByName.set(t.__tool.name, t)
+			}
+
+			accounting.assembliesTotal++
+
+			if (budget?.maxAssembliesPerMinute) {
+				accounting.assembliesThisWindow++
+				if (accounting.assembliesThisWindow > budget.maxAssembliesPerMinute) {
+					const w: import("./types.js").Warning = {
+						code: "budget-exceeded",
+						message: `Assembly rate limit exceeded: ${accounting.assembliesThisWindow}/${budget.maxAssembliesPerMinute} per minute`,
+						severity: "error",
+					}
+					notifyWarning(w)
+					if ((budget.onExceeded ?? "throw") === "throw") {
+						throw new BudgetExceededError(
+							"assemblies",
+							budget.maxAssembliesPerMinute,
+							accounting.assembliesThisWindow,
+						)
+					}
+				}
+			}
+
+			if (
+				budget?.maxTokensPerAssembly &&
+				metrics.prompt.totalTokens > budget.maxTokensPerAssembly
+			) {
+				const w: import("./types.js").Warning = {
+					code: "budget-exceeded",
+					message: `Assembly token limit exceeded: ${metrics.prompt.totalTokens}/${budget.maxTokensPerAssembly}`,
+					severity: "error",
+				}
+				notifyWarning(w)
+				if ((budget.onExceeded ?? "throw") === "throw") {
+					throw new BudgetExceededError(
+						"tokens",
+						budget.maxTokensPerAssembly,
+						metrics.prompt.totalTokens,
+					)
+				}
+			}
+
+			accounting.cumulativeTokens += metrics.prompt.totalTokens
+			if (budget?.maxCumulativeTokens && accounting.cumulativeTokens > budget.maxCumulativeTokens) {
+				const w: import("./types.js").Warning = {
+					code: "budget-exceeded",
+					message: `Cumulative token budget exceeded: ${accounting.cumulativeTokens}/${budget.maxCumulativeTokens}`,
+					severity: "error",
+				}
+				notifyWarning(w)
+				if ((budget.onExceeded ?? "throw") === "throw") {
+					throw new BudgetExceededError(
+						"cumulative",
+						budget.maxCumulativeTokens,
+						accounting.cumulativeTokens,
+					)
+				}
 			}
 
 			try {
@@ -548,9 +659,7 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 			if (disposed) {
 				return
 			}
-			const matcher = toMatcher(mat)
 			await clientImpl.invalidate(mat)
-			void matcher
 
 			const seeded = await keysMatching(toMatcher(mat))
 			const seedsExpanded = await expandAffected(seeded)
@@ -606,6 +715,13 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 				fetchedAt: now,
 				expiresAt: now + gcMs(binding as unknown as AnyBinding),
 				state: "fresh",
+			}).catch((err) => {
+				notifyWarning({
+					code: "subscription-dropped",
+					message: `setCacheEntry persist failed: ${err instanceof Error ? err.message : String(err)}`,
+					bindingKey: binding.__def.key as BindingKey,
+					severity: "error",
+				})
 			})
 		},
 
@@ -642,16 +758,56 @@ export function createContextClient(opts: ContextClientOptions = {}): ContextCli
 			registeredSinks.set(nm, adapter)
 		},
 
+		getUsage(): import("./types.js").UsageSnapshot {
+			return {
+				cumulativeTokens: accounting.cumulativeTokens,
+				assembliesTotal: accounting.assembliesTotal,
+				assembliesThisWindow: accounting.assembliesThisWindow,
+				fetchesThisWindow: accounting.fetchesThisWindow,
+				budgetRemaining: {
+					tokens: budget?.maxCumulativeTokens
+						? Math.max(0, budget.maxCumulativeTokens - accounting.cumulativeTokens)
+						: "unlimited",
+					assemblies: budget?.maxAssembliesPerMinute
+						? Math.max(0, budget.maxAssembliesPerMinute - accounting.assembliesThisWindow)
+						: "unlimited",
+				},
+			}
+		},
+
 		async executeTool(nm, input) {
+			if (disposed) {
+				throw new Error("ContextClient disposed")
+			}
 			const tb = toolsByName.get(nm)
 			if (!tb) {
 				throw new Error(`Unknown tool "${nm}"`)
 			}
+
+			if (permissions?.onToolCall) {
+				const allowed = await permissions.onToolCall({
+					name: nm,
+					input,
+					description: tb.__tool.description,
+					bindingKey: tb.__tool.key,
+				})
+				if (!allowed) {
+					if (permissions.onDeny === "throw") {
+						throw new ToolDeniedError(nm, input)
+					}
+					return { error: `Tool "${nm}" was denied by permissions hook.` }
+				}
+			}
+
 			const parsed = tb.__tool.input.parse(input)
 			return tb.__tool.fetch(parsed as never, { signal: masterAbort.signal, client: clientRef })
 		},
 
 		async dispose() {
+			if (windowTimer) {
+				clearInterval(windowTimer)
+				windowTimer = undefined
+			}
 			disposed = true
 			masterAbort.abort()
 			bgInflight.clear()

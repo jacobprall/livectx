@@ -49,7 +49,18 @@ export function serializeKey(key: BindingKey): string {
 }
 
 export function keysEqual(a: BindingKey, b: BindingKey): boolean {
-	return serializeKey(a) === serializeKey(b)
+	if (a.length !== b.length) return false
+	for (let i = 0; i < a.length; i++) {
+		const ai = a[i]
+		const bi = b[i]
+		if (ai === bi) continue
+		if (typeof ai !== typeof bi) return false
+		if (typeof ai === "object" || typeof bi === "object") {
+			return serializeKey(a) === serializeKey(b)
+		}
+		return false
+	}
+	return true
 }
 
 function prefixMatches(key: BindingKey, prefix: BindingKey): boolean {

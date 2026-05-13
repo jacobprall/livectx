@@ -5,6 +5,7 @@ import type {
 	ResolvedTool,
 	SinkAdapter,
 } from "@livectx/core"
+import { segmentsToText } from "@livectx/core"
 
 export interface AnthropicSinkOutput {
 	system: Array<{
@@ -42,7 +43,7 @@ export function anthropicSink(): SinkAdapter<AnthropicSinkOutput> {
 			}
 
 			const messages: AnthropicSinkOutput["messages"] = []
-			const dynamicText = segments.dynamicBlocks.map((b) => b.text).join("\n")
+			const dynamicText = segmentsToText(segments).dynamicText
 			if (dynamicText.trim()) {
 				messages.push({
 					role: "user",

@@ -104,7 +104,7 @@ describe("assemble", () => {
 			sink: stubSink<Out>(),
 		})
 
-		expect(out.segments.dynamicBlocks.some((blk) => blk.text.includes("42"))).toBe(true)
+		expect(out.segments.staticBlocks.some((blk) => blk.text.includes("42"))).toBe(true)
 		await client.dispose()
 	})
 

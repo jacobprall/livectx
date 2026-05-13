@@ -1,4 +1,4 @@
-import { AssemblyError } from "./errors.js"
+import { AssemblyError, BudgetExceededError } from "./errors.js"
 import { serializeKey } from "./key.js"
 import { lintAssembly } from "./lint.js"
 import { topologicalSort } from "./resolver.js"
@@ -66,12 +66,12 @@ function depsRecord(binding: AnyBinding): Record<string, AnyBinding> {
 /** Seed list in template-discovery order plus transitive deps. */
 function extractSeedBindings(template: { values: readonly TemplateValue[] }): AnyBinding[] {
 	const seeds: AnyBinding[] = []
+	const seen = new Set<string>()
 
 	function ensure(binding: AnyBinding): void {
 		const id = serializeKey(binding.__def.key)
-		if (seeds.some((b) => serializeKey(b.__def.key) === id)) {
-			return
-		}
+		if (seen.has(id)) return
+		seen.add(id)
 		seeds.push(binding)
 		for (const dep of Object.values(depsRecord(binding))) {
 			ensure(dep)
@@ -188,6 +188,7 @@ async function assembleValues(
 						fetchLatency[bk] = cell.fetchLatencyMs
 					}
 				} catch (error) {
+					if (error instanceof BudgetExceededError) throw error
 					failures.push({ key: b.__def.key, error: error as Error })
 				}
 			}),
@@ -300,11 +301,11 @@ export async function assembleTemplate<F extends SinkAdapter>(
 		}
 
 		if (isPrimitiveTemplateValue(tv)) {
-			flushStatic()
 			const txt = `${tv}`
-			if (hasExplicitBp && !explicitBreakpointReached) {
-				dynamicEarlyBlocks.push({ text: txt })
+			if (!crossedDivider && !(hasExplicitBp && explicitBreakpointReached)) {
+				staticAccumulator += txt
 			} else {
+				flushStatic()
 				dynamicLateBlocks.push({ text: txt })
 			}
 			continue

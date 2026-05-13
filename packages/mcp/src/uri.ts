@@ -28,7 +28,7 @@ function slugPathSegment(atom: KeyAtom): string {
 		return "null"
 	}
 	if (typeof atom === "string") {
-		return encodeURIComponent(atom)
+		return encodeURIComponent(JSON.stringify(atom))
 	}
 	if (typeof atom === "number" || typeof atom === "boolean") {
 		return encodeURIComponent(String(atom))
@@ -59,6 +59,7 @@ function parseUriSegment(seg: string): KeyAtom {
 		const parsed = JSON.parse(decoded) as unknown
 		if (
 			parsed === null ||
+			typeof parsed === "string" ||
 			typeof parsed === "number" ||
 			typeof parsed === "boolean" ||
 			(typeof parsed === "object" &&

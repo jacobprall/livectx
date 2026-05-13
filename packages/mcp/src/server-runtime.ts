@@ -98,9 +98,7 @@ export class LivectxMcpRuntime {
 	}
 
 	async prefetchExposed(): Promise<void> {
-		for (const b of this.resourceUriToBinding.values()) {
-			await this.client.prefetch(b)
-		}
+		await Promise.all([...this.resourceUriToBinding.values()].map((b) => this.client.prefetch(b)))
 	}
 
 	async readRendered(uri: string): Promise<{ text: string; mimeType: string }> {

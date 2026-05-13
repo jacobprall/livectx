@@ -19,6 +19,20 @@ function validateAgainstSchema(
 	if (t === undefined) {
 		return
 	}
+
+	const enumValues = schema.enum as unknown[] | undefined
+	if (enumValues && Array.isArray(enumValues)) {
+		if (!enumValues.includes(input)) {
+			throw new TypeError(`Value at ${path} must be one of: ${enumValues.map(String).join(", ")}`)
+		}
+	}
+	const constValue = schema.const
+	if (constValue !== undefined) {
+		if (input !== constValue) {
+			throw new TypeError(`Value at ${path} must be ${JSON.stringify(constValue)}`)
+		}
+	}
+
 	if (typeof t !== "string") {
 		throw new TypeError(`Invalid schema at ${path}: type must be a string`)
 	}
@@ -70,12 +84,6 @@ function validateAgainstSchema(
 	}
 	if (expectedPrimitive === "null" && actual !== "null") {
 		throw new TypeError(`Expected null at ${path}, got ${actual}`)
-	}
-	if (
-		["number", "string", "boolean", "null"].includes(expectedPrimitive) &&
-		actual !== expectedPrimitive
-	) {
-		throw new TypeError(`Expected ${expectedPrimitive} at ${path}, got ${actual}`)
 	}
 }
 

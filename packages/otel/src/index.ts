@@ -53,14 +53,16 @@ export function otelTelemetry(opts: OtelOptions): TelemetryAdapter {
 		recordAssemble(metrics: AssembleMetrics): void {
 			const span = tracer.startSpan("livectx.assemble", {
 				attributes: {
-					"livectx.bindings.count": Object.keys(metrics.bindings).length,
-					"livectx.tokens.static": metrics.prompt.staticTokens,
-					"livectx.tokens.dynamic": metrics.prompt.dynamicTokens,
-					"livectx.tokens.total": metrics.prompt.totalTokens,
-					"livectx.cache_hit": metrics.prompt.expectedCacheHit,
 					"livectx.duration_ms": metrics.durationMs,
-					"livectx.warnings.count": metrics.warnings.length,
 				},
+			})
+			span.addEvent("assemble.complete", {
+				"livectx.bindings.count": Object.keys(metrics.bindings).length,
+				"livectx.tokens.static": metrics.prompt.staticTokens,
+				"livectx.tokens.dynamic": metrics.prompt.dynamicTokens,
+				"livectx.tokens.total": metrics.prompt.totalTokens,
+				"livectx.cache_hit": metrics.prompt.expectedCacheHit,
+				"livectx.warnings.count": metrics.warnings.length,
 			})
 			span.end()
 			assembleHistogram?.record(metrics.durationMs)
@@ -75,15 +77,18 @@ export function otelTelemetry(opts: OtelOptions): TelemetryAdapter {
 				},
 			})
 			span.end()
-			fetchHistogram?.record(latencyMs, { success: String(success) })
+			fetchHistogram?.record(latencyMs, { success: success ? "true" : "false" })
 		},
 
+		// Permission checks can flow through `onWarning` on the client when the
+		// permission hook is wired to emit warnings (no dedicated OTel hook path).
 		recordWarning(warning: Warning): void {
 			const span = tracer.startSpan("livectx.warning", {
 				attributes: {
 					"livectx.warning.code": warning.code,
 					"livectx.warning.severity": warning.severity,
 					"livectx.warning.message": warning.message,
+					...(warning.code === "budget-exceeded" ? { "livectx.budget.exceeded": true } : {}),
 				},
 			})
 			span.end()

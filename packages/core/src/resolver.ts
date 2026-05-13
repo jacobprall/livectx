@@ -35,34 +35,30 @@ function uniqByKeyOrdered(bindings: AnyBinding[]): AnyBinding[] {
 export function detectCycles(bindings: AnyBinding[]): BindingKey[] | null {
 	const roots = uniqByKeyOrdered(bindings)
 	const subgraph = collectWithDeps(roots)
-	const memo = subgraph
 
 	const visited = new Set<string>()
-	const visiting = new Set<string>()
+	const onPath = new Set<string>()
 	const stack: AnyBinding[] = []
 
 	function dfs(node: AnyBinding): BindingKey[] | null {
 		const id = bindingId(node)
 
-		const stackIdx = stack.findIndex((b) => bindingId(b) === id)
-		if (stackIdx >= 0) {
+		if (visited.has(id)) {
+			return null
+		}
+
+		if (onPath.has(id)) {
+			const stackIdx = stack.findIndex((b) => bindingId(b) === id)
 			const cycleKeys = [...stack.slice(stackIdx).map((b) => b.__def.key as BindingKey)]
 			cycleKeys.push(node.__def.key as BindingKey)
 			return cycleKeys
 		}
 
-		if (visited.has(id)) {
-			return null
-		}
-		if (visiting.has(id)) {
-			return [node.__def.key as BindingKey]
-		}
-
-		visiting.add(id)
+		onPath.add(id)
 		stack.push(node)
 
 		for (const dep of depsOf(node)) {
-			if (!memo.has(bindingId(dep))) {
+			if (!subgraph.has(bindingId(dep))) {
 				continue
 			}
 			const c = dfs(dep)
@@ -72,15 +68,13 @@ export function detectCycles(bindings: AnyBinding[]): BindingKey[] | null {
 		}
 
 		stack.pop()
-		visiting.delete(id)
+		onPath.delete(id)
 		visited.add(id)
 		return null
 	}
 
 	for (const b of subgraph.values()) {
 		if (!visited.has(bindingId(b))) {
-			visiting.clear()
-			stack.length = 0
 			const c = dfs(b)
 			if (c?.length) {
 				return c
@@ -128,7 +122,6 @@ export function topologicalSort(bindings: AnyBinding[]): AnyBinding[][] {
 	)
 
 	const depsInGraph = new Map<string, AnyBinding[]>()
-	const rev = new Map<string, Set<string>>()
 
 	for (const b of subgraphList) {
 		const id = bindingId(b)
@@ -139,12 +132,6 @@ export function topologicalSort(bindings: AnyBinding[]): AnyBinding[][] {
 				continue
 			}
 			inner.push(dep)
-			let rs = rev.get(did)
-			if (!rs) {
-				rs = new Set<string>()
-				rev.set(did, rs)
-			}
-			rs.add(id)
 		}
 		depsInGraph.set(id, inner)
 	}
@@ -186,17 +173,20 @@ export function topologicalSort(bindings: AnyBinding[]): AnyBinding[][] {
 		arr.push(b)
 	}
 
-	function indexInBindings(b: AnyBinding): number {
-		const sid = bindingId(b)
-		const ix = order.findIndex((x) => bindingId(x) === sid)
-		return ix < 0 ? Number.MAX_SAFE_INTEGER : ix
+	const orderIndex = new Map<string, number>()
+	for (let i = 0; i < order.length; i++) {
+		orderIndex.set(bindingId(order[i]), i)
 	}
 
 	const waves: AnyBinding[][] = []
 	for (let lv = 0; lv <= maxLv; lv++) {
 		const wave = byLevel.get(lv)
 		if (wave?.length) {
-			wave.sort((a, b) => indexInBindings(a) - indexInBindings(b))
+			wave.sort(
+				(a, b) =>
+					(orderIndex.get(bindingId(a)) ?? Number.MAX_SAFE_INTEGER) -
+					(orderIndex.get(bindingId(b)) ?? Number.MAX_SAFE_INTEGER),
+			)
 			waves.push(wave)
 		}
 	}

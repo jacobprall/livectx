@@ -1,6 +1,6 @@
 import type { AnyBinding, Binding, CacheEntry } from "@livectx/core"
 import { parseDuration } from "@livectx/core"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useMemo, useSyncExternalStore } from "react"
 import { useLivectxClient } from "./provider.js"
 
 export interface UseBindingResult<T> {
@@ -11,22 +11,12 @@ export interface UseBindingResult<T> {
 	refetch: () => Promise<void>
 }
 
-function readEntry<T>(binding: Binding<T>, get: () => CacheEntry<T> | undefined) {
-	return get()
-}
-
 function entryIsStale<T>(binding: Binding<T>, entry: CacheEntry<T> | undefined): boolean {
-	if (!entry) {
-		return false
-	}
-	if (entry.state === "stale" || entry.state === "error") {
-		return true
-	}
+	if (!entry) return false
+	if (entry.state === "stale" || entry.state === "error") return true
 	try {
 		const staleMs = parseDuration(binding.__def.staleTime ?? 0)
-		if (staleMs === Number.POSITIVE_INFINITY) {
-			return false
-		}
+		if (staleMs === Number.POSITIVE_INFINITY) return false
 		return Date.now() - entry.fetchedAt >= staleMs
 	} catch {
 		return false
@@ -36,87 +26,40 @@ function entryIsStale<T>(binding: Binding<T>, entry: CacheEntry<T> | undefined):
 export function useBinding<T>(binding: Binding<T>): UseBindingResult<T> {
 	const client = useLivectxClient()
 
-	const [data, setData] = useState<T | undefined>(
-		() => readEntry(binding, () => client.getCacheEntry(binding))?.value,
+	const subscribe = useCallback(
+		(onStoreChange: () => void) => {
+			const unsub = client.mount(binding as AnyBinding)
+			// For bindings without a subscribe function, poll to detect staleness
+			const hasSubscribe = typeof binding.__def.subscribe === "function"
+			let poll: ReturnType<typeof setInterval> | undefined
+			if (!hasSubscribe) {
+				poll = globalThis.setInterval(onStoreChange, 1000)
+			}
+			// Trigger initial fetch
+			void client.prefetch(binding as AnyBinding).then(onStoreChange, onStoreChange)
+			return () => {
+				unsub()
+				if (poll !== undefined) globalThis.clearInterval(poll)
+			}
+		},
+		[client, binding],
 	)
-	const [isLoading, setIsLoading] = useState(true)
-	const [isStale, setIsStale] = useState(() =>
-		entryIsStale(
-			binding,
-			readEntry(binding, () => client.getCacheEntry(binding)),
-		),
-	)
-	const [error, setError] = useState<Error | null>(() => {
-		const e = readEntry(binding, () => client.getCacheEntry(binding))
-		return e?.state === "error" && e.error ? e.error : null
-	})
+
+	const getSnapshot = useCallback(() => client.getCacheEntry(binding), [client, binding])
+
+	const entry = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+
+	const data = entry?.value as T | undefined
+	const isLoading = entry === undefined
+	const isStale = entryIsStale(binding, entry)
+	const error = entry?.state === "error" ? (entry.error ?? new Error("Binding error")) : null
 
 	const refetch = useCallback(async () => {
-		setIsLoading(true)
-		setError(null)
-		try {
-			await client.prefetch(binding as AnyBinding)
-			const e = client.getCacheEntry(binding)
-			setData(e?.value as T | undefined)
-			setIsStale(entryIsStale(binding, e))
-			if (e?.state === "error" && e.error) {
-				setError(e.error)
-			}
-		} catch (err) {
-			setError(err instanceof Error ? err : new Error(String(err)))
-		} finally {
-			setIsLoading(false)
-		}
+		await client.refetch(binding.__def.key)
 	}, [client, binding])
 
-	useEffect(() => {
-		let cancelled = false
-		void (async () => {
-			setIsLoading(true)
-			setError(null)
-			try {
-				await client.prefetch(binding as AnyBinding)
-				if (cancelled) {
-					return
-				}
-				const e = client.getCacheEntry(binding)
-				setData(e?.value as T | undefined)
-				setIsStale(entryIsStale(binding, e))
-				if (e?.state === "error" && e.error) {
-					setError(e.error)
-				}
-			} catch (err) {
-				if (!cancelled) {
-					setError(err instanceof Error ? err : new Error(String(err)))
-				}
-			} finally {
-				if (!cancelled) {
-					setIsLoading(false)
-				}
-			}
-		})()
-
-		const stopMount = client.mount(binding as AnyBinding)
-		const hasSubscribe = typeof binding.__def.subscribe === "function"
-		const poll = hasSubscribe
-			? globalThis.setInterval(() => {
-					const e = client.getCacheEntry(binding)
-					setData(e?.value as T | undefined)
-					setIsStale(entryIsStale(binding, e))
-					if (e?.state === "error" && e.error) {
-						setError(e.error)
-					}
-				}, 300)
-			: undefined
-
-		return () => {
-			cancelled = true
-			stopMount()
-			if (poll !== undefined) {
-				globalThis.clearInterval(poll)
-			}
-		}
-	}, [client, binding])
-
-	return { data, isLoading, isStale, error, refetch }
+	return useMemo(
+		() => ({ data, isLoading, isStale, error, refetch }),
+		[data, isLoading, isStale, error, refetch],
+	)
 }
